@@ -10,7 +10,7 @@ module DogeSansa
             @time = comment.created_at
             @permalink = "http://www.reddit.com/comments/#{link.id}/dogesansa/#{comment.id}"
 
-            m = /(\/u\/\S+)\s->\s(\/u\/\S+)\s*Ð(\S+)/.match(comment.body)
+            m = /(\/u\/\S+)\s\^-&gt;\s\^(\/u\/\S+)\s__\^[^\x00-\x7F](\S+)/.match(comment.body)
             @from = m[1].to_s
             @to = m[2].to_s
             @amount = m[3].to_f

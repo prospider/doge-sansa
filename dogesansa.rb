@@ -1,6 +1,6 @@
 require 'redditkit'
 require 'pstore'
-require 'dogesansa/donor'
+require './donor'
 
 module DogeSansa
     class DSBot
@@ -34,7 +34,7 @@ module DogeSansa
             log.debug("Messages checked. #{messages.count} messages found.")
 
             messages.entries.each do |message|
-                if message.body ~= /\+\/u\/dogesansa/ then
+                if message.body =~ /\+\/u\/dogesansa/ then
                     command = /\+\/u\/dogesansa\s+(\S+)/.match(message.body)[1]
                     command.downcase!
 
@@ -87,7 +87,7 @@ module DogeSansa
             temp_biggest_comment = nil
 
             comments.entries.each do |comment|
-                m = /(\/u\/\S+)\s->\s(\/u\/\S+)\s*Ð(\S+)/.match(comment.body)
+                m = /(\/u\/\S+)\s\^-&gt;\s\^(\/u\/\S+)\s__\^[^\x00-\x7F](\S+)/.match(comment.body)
                 if not m.nil? then
                     # Do some comment self-checks
                     if m[1].empty? and m[2].empty? then
@@ -117,4 +117,7 @@ module DogeSansa
                 @pstore['top'] = @top
                 @pstore['total'] = @total
             end
+            end
         end
+    end
+end
