@@ -24,6 +24,8 @@ module DogeSansa
             @pstore.transaction(true) do
                 @top = @pstore['top']
                 @total = @pstore['total']
+                @last_messages_check = @pstore['last_messages_check']
+                @last_bot_check = @pstore['last_bot_check']
             end
 
             @log.info("Loaded @top: to: #{@top.to} from: #{@top.from} amount: #{@top.amount}")
@@ -31,12 +33,25 @@ module DogeSansa
         end
 
         def main()
-            while true
-                @log.debug("Ph'nglui mglw'nafh Cthulhu R'lyeh wgah-nagl ftaghn")
-                self.parse_bot_comments()
-                self.orangered()
+            begin
+                while true
+                    @log.debug("Ph'nglui mglw'nafh Cthulhu R'lyeh wgah-nagl ftaghn")
+                    self.parse_bot_comments()
+                    self.orangered()
 
-                sleep(30)
+                    sleep(30)
+                end
+            rescue SystemExit, Interrupt
+                # Close cleanly
+                @pstore.transaction do
+                    @pstore['top'] = @top
+                    @pstore['total'] = @total
+                    @pstore['last_messages_check'] = @last_messages_check
+                    @pstore['last_bot_check'] = @last_bot_check
+                end
+
+                @log.warn("System interrupt detected. All values saved to pstore.")
+                @log.info("DOGESANSA BOT stopped at #{Time.now}.")
             end
         end
 
@@ -47,6 +62,10 @@ module DogeSansa
             return if messages.empty?
 
             @last_messages_check = messages.first.full_name
+
+            @pstore.transaction do
+                @pstore['last_messages_check'] = @last_messages_check
+            end
 
             messages.entries.each do |message|
                 if message.body =~ /\+\/u\/dogesansa/ then
@@ -73,14 +92,14 @@ module DogeSansa
                         self.reply(message, body)
                     when /^(top|most)/
                         @log.debug("+top requested by #{message.author}")
-                        body = "Most generous shibe for the #{@today + suffix} is "
-                        body = body + "#{@top.from} with #{@top.amount} DOGE to #{@top.from}."
-                        body = body + "^([[permalink](#{@top.permalink})] "
-                        body = body + "[[help](http://www.reddit.com/r/dogesansa)])"
+                        body = "Most generous shibe for the #{@today.to_s + suffix} is "
+                        body = body + "#{@top.from} with #{@top.amount} DOGE to #{@top.to}."
+                        body = body + "^[[permalink](#{@top.permalink})] "
+                        body = body + "^[[help](http://www.reddit.com/r/dogesansa)]"
                         self.reply(message, body)
                     when /^(total)/
                         @log.debug("+total requested by #{message.author}")
-                        body = "#{@total} DOGE donated for the #{@today + suffix}. wow much generosity!"
+                        body = "#{@total} DOGE donated for the #{@today.to_s + suffix}. wow much generosity!"
                         body = body + "^[[help](http://www.reddit.com/r/dogesansa)]"
                         self.reply(message, body)
                     end
@@ -114,6 +133,11 @@ module DogeSansa
 
             @last_bot_check = comments.first.full_name
             @log.debug("Set the @last_bot_check to #{@last_bot_check}.")
+
+            @pstore.transaction do
+                @pstore['last_bot_check'] = @last_bot_check
+            end
+
             @log.debug("#{comments.count} new comments found.")
 
             # If we notice the day has changed, reset our stats
