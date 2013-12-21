@@ -8,7 +8,7 @@ module DogeSansa
         def initialize(username, password)
             @username = username
             @client = RedditKit::Client.new(username, password)
-            @log = Logger.new(STDOUT)
+            @log = Logger.new('dsbot.log', 10, 1024000)
             @log.level = Logger::DEBUG
             @today = Time.now.day
 
@@ -18,6 +18,9 @@ module DogeSansa
 
             @log.info("DOGESANSA BOT STARTING")
             @log.info("Developed by /u/Rhodesig")
+
+            p "DOGESANSA BOT STARTING"
+            p "Developed by /u/Rhodesig"
 
             # Set up our records for top donor and coins donated
             @pstore = PStore.new("dogesansa.pstore")
@@ -179,6 +182,7 @@ module DogeSansa
             if not temp_biggest_comment.nil? then
                 @top = Donor.new(temp_biggest_comment, @client.link(temp_biggest_comment.link_id))
                 @log.info("@top has been set to #{@top.from} with #{@top.amount} dogecoins.")
+                self.notify_newest_top_donor(temp_biggest_comment)
             end
 
             # Save our findings
@@ -186,6 +190,16 @@ module DogeSansa
                 @pstore['top'] = @top
                 @pstore['total'] = @total
             end
+        end
+
+        def notify_newest_top_donor(comment)
+            # Get the parent comment
+            parent = @client.comment(comment.attributes[:parent_id])
+
+            body = "Wow new top tipper for today, much rich! #{@top.from} is the new top tipper with #{@top.amount}."
+            body = body + "^[[help](http://www.reddit.com/r/dogesansa)]"
+
+            reply(comment, body)
         end
     end
 end
