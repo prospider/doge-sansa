@@ -1,5 +1,6 @@
 require 'redditkit'
 require 'pstore'
+require 'logger'
 require './donor'
 
 module DogeSansa
@@ -8,78 +9,119 @@ module DogeSansa
             @username = username
             @client = RedditKit::Client.new(username, password)
             @log = Logger.new(STDOUT)
-            log.level = Logger::DEBUG
+            @log.level = Logger::DEBUG
+            @today = Time.now.day
 
-            raise Exception("Login failed") if not @client.signed_in?
+            @log.debug("Your supplied username: #{ARGV[0]} and password: #{ARGV[1]}")
 
-            log.info("DOGESANSA BOT STARTING")
-            log.info("Developed by /u/Rhodesig")
+            raise "Login failed" if not @client.signed_in?
+
+            @log.info("DOGESANSA BOT STARTING")
+            @log.info("Developed by /u/Rhodesig")
 
             # Set up our records for top donor and coins donated
             @pstore = PStore.new("dogesansa.pstore")
             @pstore.transaction(true) do
-                @top = pstore['top']
-                @total = pstore['total']
+                @top = @pstore['top']
+                @total = @pstore['total']
             end
 
-            log.info("Loaded @top: to: #{@top.to} from: #{@top.from} amount: #{@top.amount}")
-            log.info("Loaded @total: #{@total}")
+            @log.info("Loaded @top: to: #{@top.to} from: #{@top.from} amount: #{@top.amount}")
+            @log.info("Loaded @total: #{@total}")
+        end
 
-            self.parse_bot_comments()
-            self.orangered()
+        def main()
+            while true
+                @log.debug("Ph'nglui mglw'nafh Cthulhu R'lyeh wgah-nagl ftaghn")
+                self.parse_bot_comments()
+                self.orangered()
+
+                sleep(30)
+            end
         end
 
         def orangered
             messages = self.check_messages()
-            log.debug("Messages checked. #{messages.count} messages found.")
+            @log.info("Messages checked. #{messages.count} messages found.")
+
+            return if messages.empty?
+
+            @last_messages_check = messages.first.full_name
 
             messages.entries.each do |message|
                 if message.body =~ /\+\/u\/dogesansa/ then
-                    command = /\+\/u\/dogesansa\s+(\S+)/.match(message.body)[1]
+                    command = /\+\/u\/dogesansa\s+(.+)/.match(message.body)[1]
                     command.downcase!
 
+                    case @today.to_s[-1]
+                    when "1"
+                        suffix = "st"
+                    when "2"
+                        suffix = "nd"
+                    when "3"
+                        suffix = "rd"
+                    else
+                        suffix = "th"
+                    end
+
                     case command
-                    when 'top'
-                        log.debug("+top requested by #{message.author}")
-                        self.reply(message, "#{@top.from} has donated the most dogecoins today with #{@top.amount} to #{@top.to}.")
-                    when 'total'
-                        log.debug("+total requested by #{message.author}")
-                        self.reply(message, "A total of #{@total} dogecoins have been donated to. wow much generosity!")
+                    when /^(all)/
+                        @log.debug("+all requested by #{message.author}")
+                        body = "Top shibe: #{@top.from} with #{@top.amount}. "
+                        body = body + " All coins donated today: #{@total}."
+                        body = body + "^[[help](http://www.reddit.com/r/dogesansa)]"
+                        self.reply(message, body)
+                    when /^(top|most)/
+                        @log.debug("+top requested by #{message.author}")
+                        body = "Most generous shibe for the #{@today + suffix} is "
+                        body = body + "#{@top.from} with #{@top.amount} DOGE to #{@top.from}."
+                        body = body + "^([[permalink](#{@top.permalink})] "
+                        body = body + "[[help](http://www.reddit.com/r/dogesansa)])"
+                        self.reply(message, body)
+                    when /^(total)/
+                        @log.debug("+total requested by #{message.author}")
+                        body = "#{@total} DOGE donated for the #{@today + suffix}. wow much generosity!"
+                        body = body + "^[[help](http://www.reddit.com/r/dogesansa)]"
+                        self.reply(message, body)
                     end
                 end
             end
         end
 
         def check_messages()
-            messages = @client.messages(:category => unread)
+            if defined?(@last_messages_check) then
+                messages = @client.messages(:category => "inbox", :before => @last_messages_check)
+            else
+                messages = @client.messages(:category => "inbox", :limit => 25)
+            end
         end
 
         def reply(comment, body)
-            submit_comment(comment, body)
-            log.debug("Replied to #{comment.author} with #{body}")
+            @client.submit_comment(comment, body)
+            @log.info("Replied to #{comment.author} with #{body}")
+            sleep(5)
         end
 
         def parse_bot_comments()
-            log.debug("Searching /u/dogetipbot for new comments to set the @top donor.")
+            @log.info("Searching /u/dogetipbot for new comments to set the @top donor.")
             if defined?(@last_bot_check) then
-                comments = RedditKit.user_content(BOT, :category => 'comments', :before => @last_bot_check)
+                comments = RedditKit.user_content('dogetipbot', :category => 'comments', :before => @last_bot_check)
             else
-                comments = RedditKit.user_conten(BOT, :category => 'comments')
+                comments = RedditKit.user_content('dogetipbot', :category => 'comments', :limit => 25)
             end
 
-            @last_bot_check = comments.first.full_name
-
             return if comments.empty?
-            log.debug("Pending comments not empty.")
+
+            @last_bot_check = comments.first.full_name
+            @log.debug("Set the @last_bot_check to #{@last_bot_check}.")
+            @log.debug("#{comments.count} new comments found.")
 
             # If we notice the day has changed, reset our stats
-            now = Time.now()
-            if  now.day > comments.entries[-1].created_at.day or
-                now.month > comments.entries[-1].created_at.month or
-                now.year > comments.entries[-1].created_at.year then
-                    log.info("Day has changed. Resetting @top donor and @total.")
+            if not @today == comments.first.created_at.day then
+                    @log.info("Day has changed. Resetting @top donor and @total.")
                     @top = nil
                     @total = 0.0
+                    @today = Time.now.day
             end
 
             temp_biggest = 0
@@ -91,33 +133,40 @@ module DogeSansa
                 if not m.nil? then
                     # Do some comment self-checks
                     if m[1].empty? and m[2].empty? then
-                        log.debug("Invalid to/from. Skipping comment.")
+                        @log.debug("Invalid to/from. Skipping comment.")
                         next
                     end
 
                     if m[3].to_f == 0.0 then
-                        log.debug("Empty/invalid amount. Skipping comment.")
+                        @log.debug("Empty/invalid amount. Skipping comment.")
                         next
                     end
 
                     @total += m[3].to_f
 
                     if m[3].to_f > temp_biggest then
-                        log.debug("#{m[1].to_s} has donated more than @top with #{m[3].to_f}.")
+                        @log.debug("#{m[1].to_s} has donated more than @top with #{m[3].to_f}.")
                         temp_biggest = m[3].to_f
                         temp_biggest_comment = comment
                     end
+                end
             end
 
-            @top = Donor.new(comment, @client.link(comment.link_id))
-            log.debug("@top has been set to #{@top.from}")
+            if not temp_biggest_comment.nil? then
+                @top = Donor.new(temp_biggest_comment, @client.link(temp_biggest_comment.link_id))
+                @log.info("@top has been set to #{@top.from} with #{@top.amount} dogecoins.")
+            end
 
             # Save our findings
             @pstore.transaction do
                 @pstore['top'] = @top
                 @pstore['total'] = @total
             end
-            end
         end
     end
 end
+
+raise "Not enough arguments." unless ARGV.length == 2
+
+sansabot = DogeSansa::DSBot.new(ARGV[0], ARGV[1])
+sansabot.main()
